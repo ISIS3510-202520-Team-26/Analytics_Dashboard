@@ -106,8 +106,11 @@ def render_ux_tuning_page():
     st.markdown("## 📁 Análisis de Categorías")
     st.markdown("_Usado para `recommendedCategoryIds`_")
     
+    # Obtener datos de categorías desde eventos y clicks
+    df_categories = None
+    
+    # Intentar desde BQ 2.2 (clicks por botón)
     try:
-        # Obtener clicks por botón que incluye categorías
         clicks_data = api.get_clicks_by_button_by_day(start_date, end_date)
         df_clicks = pd.DataFrame(clicks_data)
         
@@ -117,45 +120,45 @@ def render_ux_tuning_page():
             
             if not df_categories.empty:
                 # Agrupar por categoría y sumar clicks
-                df_cat_agg = df_categories.groupby('button')['count'].sum().reset_index()
-                df_cat_agg = df_cat_agg.sort_values('count', ascending=False)
-                
-                # Limpiar nombres de categorías (remover prefijo "category_")
-                df_cat_agg['category'] = df_cat_agg['button'].str.replace('category_', '', regex=False)
-                
-                st.info("""
-                💡 **Nota:** Las categorías recomendadas se calculan principalmente desde 
-                el almacenamiento local (`recordLocalCategoryUse`) pero los eventos de 
-                `category.clicked` pueden usarse como indicador de interés.
-                """)
-                
-                # Mostrar gráfico
-                fig_categories = horizontal_bar_chart(
-                    df_cat_agg,
-                    x='count',
-                    y='category',
-                    title='Clicks por Categoría',
-                    height=max(300, len(df_cat_agg) * 30)
-                )
-                st.plotly_chart(fig_categories, use_container_width=True)
-                
-                # Tabla con detalles
-                with st.expander("📋 Ver tabla de categorías"):
-                    st.dataframe(
-                        df_cat_agg[['category', 'count']].rename(columns={
-                            'category': 'Categoría',
-                            'count': 'Clicks'
-                        }),
-                        use_container_width=True,
-                        hide_index=True
-                    )
-            else:
-                st.info("No hay clicks de categorías en este período")
-        else:
-            st.info("No hay datos de clicks disponibles para este período")
-            
-    except Exception as e:
-        st.warning(f"⚠️ No se pudieron cargar los datos de categorías: {str(e)}")
+                df_categories = df_categories.groupby('button')['count'].sum().reset_index()
+                df_categories['category'] = df_categories['button'].str.replace('category_', '', regex=False)
+                df_categories = df_categories.sort_values('count', ascending=False)
+    except:
+        pass
+    
+    # Si no hay datos de clicks, usar eventos de category.clicked
+    if df_categories is None or df_categories.empty:
+        category_clicked = df_agg[df_agg['event_type'] == 'category.clicked']
+        
+        if not category_clicked.empty:
+            df_categories = category_clicked.copy()
+            df_categories['category'] = 'Categorías (agrupadas)'
+    
+    # Mostrar resultados
+    if df_categories is not None and not df_categories.empty:
+        st.info("""
+        💡 **Nota:** Las categorías recomendadas se calculan principalmente desde 
+        el almacenamiento local (`recordLocalCategoryUse`) pero los eventos de 
+        `category.clicked` pueden usarse como indicador de interés.
+        """)
+        
+        # Mostrar gráfico
+        fig_categories = horizontal_bar_chart(
+            df_categories,
+            x='count',
+            y='category',
+            title='Clicks por Categoría',
+            height=max(300, len(df_categories) * 30)
+        )
+        st.plotly_chart(fig_categories, use_container_width=True)
+        
+        # Tabla con detalles
+        with st.expander("📋 Ver tabla de categorías"):
+            display_df = df_categories[['category', 'count']].copy() if 'category' in df_categories.columns else df_categories[['event_type', 'count']].copy()
+            display_df.columns = ['Categoría', 'Clicks']
+            st.dataframe(display_df, use_container_width=True, hide_index=True)
+    else:
+        st.info("No hay clicks de categorías en este período")
     
     st.markdown("---")
     
