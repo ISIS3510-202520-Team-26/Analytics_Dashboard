@@ -115,7 +115,10 @@ def render_ux_tuning_page():
     except:
         pass
     
-    # Obtener datos de categorías desde BQ 2.2
+    # Intentar obtener datos de categorías desde BQ 2.2 (clicks)
+    df_categories = None
+    data_source = None
+    
     try:
         clicks_data = api.get_clicks_by_button_by_day(start_date, end_date)
         df_clicks = pd.DataFrame(clicks_data)
@@ -125,66 +128,104 @@ def render_ux_tuning_page():
             df_clicks = df_clicks[df_clicks['button'].notna() & (df_clicks['button'] != '')]
             
             if not df_clicks.empty:
-                # El backend ya filtra por event_type = 'category.clicked'
-                # y extrae properties->>'button', que debería ser el category_id
                 df_categories = df_clicks.groupby('button')['count'].sum().reset_index()
-                df_categories = df_categories.sort_values('count', ascending=False)
                 df_categories.columns = ['category_id', 'count']
-                
-                # Mapear category_id a nombres
-                if categories_map:
-                    df_categories['category_name'] = df_categories['category_id'].apply(
-                        lambda x: categories_map.get(str(x), f"ID: {x}") if pd.notna(x) and str(x) else "Sin categoría"
-                    )
-                else:
-                    df_categories['category_name'] = df_categories['category_id'].apply(
-                        lambda x: str(x) if pd.notna(x) else "Sin categoría"
-                    )
-                
-                st.info("""
-                💡 **Nota:** Las categorías recomendadas se calculan principalmente desde 
-                el almacenamiento local (`recordLocalCategoryUse`) pero los eventos de 
-                `category.clicked` pueden usarse como indicador de interés.
-                """)
-                
-                # Mostrar total
-                total_clicks = df_categories['count'].sum()
-                st.metric(
-                    label="🖱️ Total Clicks en Categorías",
-                    value=format_number(int(total_clicks)),
-                    help="Total de clicks en categorías registrados"
-                )
-                
-                st.markdown("---")
-                
-                # Mostrar gráfico
-                fig_categories = horizontal_bar_chart(
-                    df_categories,
-                    x='count',
-                    y='category_name',
-                    title='Clicks por Categoría',
-                    height=max(300, len(df_categories) * 40)
-                )
-                st.plotly_chart(fig_categories, use_container_width=True)
-                
-                # Tabla con detalles
-                with st.expander("📋 Ver tabla de categorías"):
-                    st.dataframe(
-                        df_categories[['category_name', 'category_id', 'count']].rename(columns={
-                            'category_name': 'Categoría',
-                            'category_id': 'ID',
-                            'count': 'Clicks'
-                        }),
-                        use_container_width=True,
-                        hide_index=True
-                    )
-            else:
-                st.info("No hay clicks de categorías en este período (campo button vacío)")
-        else:
-            st.info("No hay datos de clicks de categorías para este período")
+                data_source = "clicks"
+    except:
+        pass
+    
+    # Si no hay datos de clicks, usar listings creados por categoría como proxy
+    if df_categories is None or df_categories.empty:
+        try:
+            listings_data = api.get_listings_per_day_by_category(start_date, end_date)
+            df_listings = pd.DataFrame(listings_data)
             
-    except Exception as e:
-        st.warning(f"⚠️ No se pudieron cargar los datos de categorías: {str(e)}")
+            if not df_listings.empty and 'category_id' in df_listings.columns:
+                df_listings = df_listings[df_listings['category_id'].notna() & (df_listings['category_id'] != '')]
+                
+                if not df_listings.empty:
+                    df_categories = df_listings.groupby('category_id')['count'].sum().reset_index()
+                    data_source = "listings"
+        except:
+            pass
+    
+    # Mostrar resultados
+    if df_categories is not None and not df_categories.empty:
+        # Ordenar por count
+        df_categories = df_categories.sort_values('count', ascending=False)
+        
+        # Mapear category_id a nombres
+        if categories_map:
+            df_categories['category_name'] = df_categories['category_id'].apply(
+                lambda x: categories_map.get(str(x), f"ID: {x}") if pd.notna(x) and str(x) else "Sin categoría"
+            )
+        else:
+            df_categories['category_name'] = df_categories['category_id'].apply(
+                lambda x: str(x) if pd.notna(x) else "Sin categoría"
+            )
+        
+        # Mensaje según la fuente de datos
+        if data_source == "clicks":
+            st.info("""
+            💡 **Nota:** Las categorías recomendadas se calculan principalmente desde 
+            el almacenamiento local (`recordLocalCategoryUse`) pero los eventos de 
+            `category.clicked` pueden usarse como indicador de interés.
+            """)
+            metric_label = "🖱️ Total Clicks en Categorías"
+        else:
+            st.warning("""
+            ⚠️ **Datos alternativos:** No hay eventos `category.clicked` con el campo `button` 
+            correctamente configurado. Mostrando datos de **listings creados por categoría** como proxy.
+            
+            Para ver clicks reales, asegúrate de que la app Flutter envíe:
+            ```dart
+            telemetry.trackEvent(
+              eventType: 'category.clicked',
+              properties: {'button': categoryId},
+            );
+            ```
+            """)
+            metric_label = "📝 Listings por Categoría"
+        
+        # Mostrar total
+        total_count = df_categories['count'].sum()
+        st.metric(
+            label=metric_label,
+            value=format_number(int(total_count)),
+            help="Total registrado en el período seleccionado"
+        )
+        
+        st.markdown("---")
+        
+        # Mostrar gráfico
+        fig_categories = horizontal_bar_chart(
+            df_categories,
+            x='count',
+            y='category_name',
+            title='Actividad por Categoría',
+            height=max(300, len(df_categories) * 40)
+        )
+        st.plotly_chart(fig_categories, use_container_width=True)
+        
+        # Tabla con detalles
+        with st.expander("📋 Ver tabla de categorías"):
+            st.dataframe(
+                df_categories[['category_name', 'category_id', 'count']].rename(columns={
+                    'category_name': 'Categoría',
+                    'category_id': 'ID',
+                    'count': 'Clicks' if data_source == "clicks" else 'Listings'
+                }),
+                use_container_width=True,
+                hide_index=True
+            )
+    else:
+        st.info("""
+        No hay datos de categorías disponibles para este período.
+        
+        💡 **Para ver datos aquí:**
+        - Asegúrate de que hay eventos `category.clicked` con `properties.button = categoryId`
+        - O que hay listings creados con `category_id` definido
+        """)
     
     st.markdown("---")
     
