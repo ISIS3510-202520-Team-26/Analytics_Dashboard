@@ -111,14 +111,32 @@ def render_ux_tuning_page():
     try:
         categories_data = api.get_categories()
         if categories_data:
-            categories_map = {str(cat['id']): cat['name'] for cat in categories_data}
-    except:
-        pass
+            # Crear mapeo con diferentes variantes del ID
+            for cat in categories_data:
+                cat_id = str(cat['id'])
+                cat_name = cat.get('name', cat_id)
+                categories_map[cat_id] = cat_name
+                categories_map[cat_id.lower()] = cat_name
+                categories_map[cat_id.upper()] = cat_name
+    except Exception as e:
+        st.warning(f"⚠️ No se pudo cargar el catálogo de categorías: {str(e)}")
     
-    # Intentar obtener datos de categorías desde BQ 2.2 (clicks)
+    # Intentar obtener datos de categorías desde múltiples fuentes
     df_categories = None
     data_source = None
     
+    # OPCIÓN 1: Buscar en todos los eventos category.clicked (BQ 2.1)
+    # El evento category.clicked podría tener el categoryId en properties
+    category_events = df_agg[df_agg['event_type'] == 'category.clicked']
+    
+    if not category_events.empty:
+        total_clicks = category_events['count'].sum()
+        if total_clicks > 0:
+            # Por ahora no tenemos el desglose por categoría individual desde BQ 2.1
+            # Pero sabemos cuántos clicks totales hay
+            print(f"[UX Tuning] Total category.clicked events: {total_clicks}")
+    
+    # OPCIÓN 2: Intentar desde BQ 2.2 (clicks por botón)
     try:
         clicks_data = api.get_clicks_by_button_by_day(start_date, end_date)
         df_clicks = pd.DataFrame(clicks_data)
@@ -134,7 +152,7 @@ def render_ux_tuning_page():
     except:
         pass
     
-    # Si no hay datos de clicks, usar listings creados por categoría como proxy
+    # OPCIÓN 3: Si no hay datos de clicks con button, usar listings creados por categoría
     if df_categories is None or df_categories.empty:
         try:
             listings_data = api.get_listings_per_day_by_category(start_date, end_date)
@@ -154,14 +172,18 @@ def render_ux_tuning_page():
         # Ordenar por count
         df_categories = df_categories.sort_values('count', ascending=False)
         
+        # Convertir category_id a string para el mapeo
+        df_categories['category_id'] = df_categories['category_id'].astype(str)
+        
         # Mapear category_id a nombres
         if categories_map:
             df_categories['category_name'] = df_categories['category_id'].apply(
-                lambda x: categories_map.get(str(x), f"ID: {x}") if pd.notna(x) and str(x) else "Sin categoría"
+                lambda x: categories_map.get(x, f"Cat: {x[:8]}...")
             )
         else:
+            # Si no hay categorías, mostrar solo primeros caracteres del UUID
             df_categories['category_name'] = df_categories['category_id'].apply(
-                lambda x: str(x) if pd.notna(x) else "Sin categoría"
+                lambda x: f"Cat: {x[:8]}..." if len(x) > 8 else x
             )
         
         # Mensaje según la fuente de datos
