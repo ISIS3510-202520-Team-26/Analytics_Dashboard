@@ -30,6 +30,18 @@ class AnalyticsAPI:
                 'Authorization': f'Bearer {auth_token}'
             })
     
+    def update_token(self, auth_token: str):
+        """
+        Actualiza el token de autenticación.
+        
+        Args:
+            auth_token: Nuevo token de autenticación
+        """
+        self.auth_token = auth_token
+        self.session.headers.update({
+            'Authorization': f'Bearer {auth_token}'
+        })
+    
     def _make_request(self, endpoint: str, params: Optional[Dict] = None) -> Any:
         """
         Realiza una petición GET al API.
@@ -295,4 +307,10 @@ def get_api_client(base_url: str, auth_token: Optional[str] = None) -> Analytics
     Returns:
         Instancia de AnalyticsAPI
     """
-    return AnalyticsAPI(base_url, auth_token)
+    client = AnalyticsAPI(base_url, auth_token)
+    
+    # Si hay un token en session_state, actualizarlo en el cliente
+    if 'auth_token' in st.session_state and st.session_state.auth_token:
+        client.update_token(st.session_state.auth_token)
+    
+    return client

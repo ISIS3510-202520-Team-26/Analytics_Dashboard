@@ -7,6 +7,8 @@ Este es el punto de entrada principal de la aplicación.
 
 import streamlit as st
 from datetime import datetime, timedelta
+from utils.auth import get_or_create_token, is_authenticated, clear_token
+from utils.config import API_BASE_URL
 
 # Configuración de la página
 st.set_page_config(
@@ -18,6 +20,12 @@ st.set_page_config(
         'About': "Dashboard de Analytics para Marketplace"
     }
 )
+
+# ============================================================================
+# AUTENTICACIÓN AUTOMÁTICA
+# ============================================================================
+# Intentar obtener o crear token automáticamente al cargar el dashboard
+token = get_or_create_token(API_BASE_URL)
 
 # Estilos personalizados
 st.markdown("""
@@ -43,6 +51,18 @@ st.markdown("""
 
 # Sidebar para navegación
 st.sidebar.title("📊 Analytics Dashboard")
+
+# Mostrar estado de autenticación
+if is_authenticated():
+    st.sidebar.success(f"✅ Autenticado como: {st.session_state.get('auth_email', 'Usuario')}")
+    if st.sidebar.button("🚪 Cerrar Sesión"):
+        clear_token()
+        st.rerun()
+else:
+    st.sidebar.error("❌ No autenticado")
+    st.error("No se pudo autenticar. Verifica la conexión con el backend.")
+    st.stop()
+
 st.sidebar.markdown("---")
 
 # Navegación
@@ -107,9 +127,8 @@ if page == "🏠 Inicio":
     # Cargar datos reales para la vista rápida
     from services.api_client import get_api_client
     from datetime import datetime, timedelta
-    from utils.config import API_BASE_URL
     
-    api = get_api_client(API_BASE_URL)
+    api = get_api_client(API_BASE_URL, token)
     end_date = datetime.now()
     start_date = end_date - timedelta(days=7)
     
@@ -195,7 +214,7 @@ if page == "🏠 Inicio":
             # BQ 2.2 - Clicks
             clicks_data = api.get_clicks_by_button_by_day(start_date, end_date)
             if not clicks_data:
-                st.warning("⚠ **BQ 2.2** - Clicks: No hay eventos `ui.click`")
+                st.warning("⚠ **BQ 2.2** - Clicks: No hay eventos `category.clicked`")
             
             # BQ 2.4 - Tiempo en pantallas
             time_data = api.get_time_by_screen(start_date, end_date)
