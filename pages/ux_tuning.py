@@ -72,18 +72,16 @@ def render_ux_tuning_page():
     
     with col2:
         st.metric(
-            label="🎛️ Filtros Usados",
-            value=format_number(int(filter_used)),
-            help="Eventos de tipo 'search.filter.used'"
+            label="🔄 Veces Usado",
+            value=format_number(int(searches)),
+            help="Número total de veces que se usó el buscador"
         )
     
     with col3:
         st.metric(
-            label="📊 Ratio de Uso",
-            value=f"{filter_ratio:.1f}%",
-            delta="Bajo" if low_filter_usage else "Normal",
-            delta_color="inverse" if low_filter_usage else "normal",
-            help="% de búsquedas que usan filtros"
+            label="🎛️ Filtros Aplicados",
+            value=format_number(int(filter_used)),
+            help="Veces que se usaron filtros en búsquedas"
         )
     
     if low_filter_usage:
@@ -108,26 +106,56 @@ def render_ux_tuning_page():
     st.markdown("## 📁 Análisis de Categorías")
     st.markdown("_Usado para `recommendedCategoryIds`_")
     
-    # Eventos relacionados con categorías
-    category_events = df_agg[df_agg['event_type'].str.contains('category', case=False, na=False)]
-    
-    if not category_events.empty:
-        st.info("""
-        💡 **Nota:** Las categorías recomendadas se calculan principalmente desde 
-        el almacenamiento local (`recordLocalCategoryUse`) pero los eventos de 
-        `category.clicked` pueden usarse como indicador de interés.
-        """)
+    try:
+        # Obtener clicks por botón que incluye categorías
+        clicks_data = api.get_clicks_by_button_by_day(start_date, end_date)
+        df_clicks = pd.DataFrame(clicks_data)
         
-        fig_categories = horizontal_bar_chart(
-            category_events,
-            x='count',
-            y='event_type',
-            title='Eventos Relacionados con Categorías',
-            height=300
-        )
-        st.plotly_chart(fig_categories, use_container_width=True)
-    else:
-        st.info("No hay eventos de categorías en este período")
+        if not df_clicks.empty:
+            # Filtrar solo categorías (botones que empiezan con "category_")
+            df_categories = df_clicks[df_clicks['button'].str.startswith('category_', na=False)].copy()
+            
+            if not df_categories.empty:
+                # Agrupar por categoría y sumar clicks
+                df_cat_agg = df_categories.groupby('button')['count'].sum().reset_index()
+                df_cat_agg = df_cat_agg.sort_values('count', ascending=False)
+                
+                # Limpiar nombres de categorías (remover prefijo "category_")
+                df_cat_agg['category'] = df_cat_agg['button'].str.replace('category_', '', regex=False)
+                
+                st.info("""
+                💡 **Nota:** Las categorías recomendadas se calculan principalmente desde 
+                el almacenamiento local (`recordLocalCategoryUse`) pero los eventos de 
+                `category.clicked` pueden usarse como indicador de interés.
+                """)
+                
+                # Mostrar gráfico
+                fig_categories = horizontal_bar_chart(
+                    df_cat_agg,
+                    x='count',
+                    y='category',
+                    title='Clicks por Categoría',
+                    height=max(300, len(df_cat_agg) * 30)
+                )
+                st.plotly_chart(fig_categories, use_container_width=True)
+                
+                # Tabla con detalles
+                with st.expander("📋 Ver tabla de categorías"):
+                    st.dataframe(
+                        df_cat_agg[['category', 'count']].rename(columns={
+                            'category': 'Categoría',
+                            'count': 'Clicks'
+                        }),
+                        use_container_width=True,
+                        hide_index=True
+                    )
+            else:
+                st.info("No hay clicks de categorías en este período")
+        else:
+            st.info("No hay datos de clicks disponibles para este período")
+            
+    except Exception as e:
+        st.warning(f"⚠️ No se pudieron cargar los datos de categorías: {str(e)}")
     
     st.markdown("---")
     
