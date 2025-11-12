@@ -106,59 +106,77 @@ def render_ux_tuning_page():
     st.markdown("## 📁 Análisis de Categorías")
     st.markdown("_Usado para `recommendedCategoryIds`_")
     
-    # Obtener datos de categorías desde eventos y clicks
-    df_categories = None
+    # Obtener catálogo de categorías para mapear IDs a nombres
+    categories_map = {}
+    try:
+        categories_data = api.get_categories()
+        if categories_data:
+            categories_map = {str(cat['id']): cat['name'] for cat in categories_data}
+    except:
+        pass
     
-    # Intentar desde BQ 2.2 (clicks por botón)
+    # Obtener datos de categorías desde BQ 2.2
     try:
         clicks_data = api.get_clicks_by_button_by_day(start_date, end_date)
         df_clicks = pd.DataFrame(clicks_data)
         
-        if not df_clicks.empty:
-            # Filtrar solo categorías (botones que empiezan con "category_")
-            df_categories = df_clicks[df_clicks['button'].str.startswith('category_', na=False)].copy()
+        if not df_clicks.empty and 'button' in df_clicks.columns:
+            # El backend ya filtra por event_type = 'category.clicked'
+            # y extrae properties->>'button', que debería ser el category_id
+            df_categories = df_clicks.groupby('button')['count'].sum().reset_index()
+            df_categories = df_categories.sort_values('count', ascending=False)
+            df_categories.columns = ['category_id', 'count']
             
-            if not df_categories.empty:
-                # Agrupar por categoría y sumar clicks
-                df_categories = df_categories.groupby('button')['count'].sum().reset_index()
-                df_categories['category'] = df_categories['button'].str.replace('category_', '', regex=False)
-                df_categories = df_categories.sort_values('count', ascending=False)
-    except:
-        pass
-    
-    # Si no hay datos de clicks, usar eventos de category.clicked
-    if df_categories is None or df_categories.empty:
-        category_clicked = df_agg[df_agg['event_type'] == 'category.clicked']
-        
-        if not category_clicked.empty:
-            df_categories = category_clicked.copy()
-            df_categories['category'] = 'Categorías (agrupadas)'
-    
-    # Mostrar resultados
-    if df_categories is not None and not df_categories.empty:
-        st.info("""
-        💡 **Nota:** Las categorías recomendadas se calculan principalmente desde 
-        el almacenamiento local (`recordLocalCategoryUse`) pero los eventos de 
-        `category.clicked` pueden usarse como indicador de interés.
-        """)
-        
-        # Mostrar gráfico
-        fig_categories = horizontal_bar_chart(
-            df_categories,
-            x='count',
-            y='category',
-            title='Clicks por Categoría',
-            height=max(300, len(df_categories) * 30)
-        )
-        st.plotly_chart(fig_categories, use_container_width=True)
-        
-        # Tabla con detalles
-        with st.expander("📋 Ver tabla de categorías"):
-            display_df = df_categories[['category', 'count']].copy() if 'category' in df_categories.columns else df_categories[['event_type', 'count']].copy()
-            display_df.columns = ['Categoría', 'Clicks']
-            st.dataframe(display_df, use_container_width=True, hide_index=True)
-    else:
-        st.info("No hay clicks de categorías en este período")
+            # Mapear category_id a nombres
+            if categories_map:
+                df_categories['category_name'] = df_categories['category_id'].apply(
+                    lambda x: categories_map.get(str(x), f"ID: {x}")
+                )
+            else:
+                df_categories['category_name'] = df_categories['category_id']
+            
+            st.info("""
+            💡 **Nota:** Las categorías recomendadas se calculan principalmente desde 
+            el almacenamiento local (`recordLocalCategoryUse`) pero los eventos de 
+            `category.clicked` pueden usarse como indicador de interés.
+            """)
+            
+            # Mostrar total
+            total_clicks = df_categories['count'].sum()
+            st.metric(
+                label="🖱️ Total Clicks en Categorías",
+                value=format_number(int(total_clicks)),
+                help="Total de clicks en categorías registrados"
+            )
+            
+            st.markdown("---")
+            
+            # Mostrar gráfico
+            fig_categories = horizontal_bar_chart(
+                df_categories,
+                x='count',
+                y='category_name',
+                title='Clicks por Categoría',
+                height=max(300, len(df_categories) * 40)
+            )
+            st.plotly_chart(fig_categories, use_container_width=True)
+            
+            # Tabla con detalles
+            with st.expander("📋 Ver tabla de categorías"):
+                st.dataframe(
+                    df_categories[['category_name', 'category_id', 'count']].rename(columns={
+                        'category_name': 'Categoría',
+                        'category_id': 'ID',
+                        'count': 'Clicks'
+                    }),
+                    use_container_width=True,
+                    hide_index=True
+                )
+        else:
+            st.info("No hay clicks de categorías en este período")
+            
+    except Exception as e:
+        st.warning(f"⚠️ No se pudieron cargar los datos de categorías: {str(e)}")
     
     st.markdown("---")
     

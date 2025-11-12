@@ -264,6 +264,19 @@ class AnalyticsAPI:
             'end': self._format_datetime(end)
         }
         return self._make_request('/analytics/bq/5_1', params)
+    
+    # ========================================================================
+    # Catalogs
+    # ========================================================================
+    
+    def get_categories(self) -> List[Dict]:
+        """
+        Obtiene el catálogo de categorías.
+        
+        Returns:
+            Lista de dicts con keys: id, name, ...
+        """
+        return self._make_request('/categories')
 
 
 # ============================================================================
