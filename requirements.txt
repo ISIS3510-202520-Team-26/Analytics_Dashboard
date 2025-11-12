@@ -1,0 +1,16 @@
+# Dependencias para Analytics Dashboard
+# Compatible con Python 3.14+
+
+# Framework Web
+streamlit>=1.50.0
+
+# Visualización de Datos
+plotly>=6.4.0
+pandas>=2.3.0
+
+# Cliente HTTP
+requests>=2.32.0
+
+# Utilidades
+python-dotenv>=1.2.0
+pytz>=2025.2
