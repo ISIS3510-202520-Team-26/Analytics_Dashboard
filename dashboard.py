@@ -75,6 +75,7 @@ page = st.sidebar.radio(
         "👥 Comportamiento de Usuario (BQ 2.x)",
         "🔥 Engagement (BQ 3.x)",
         "💰 Revenue & Órdenes (BQ 4.x)",
+        "🔄 Conversion Funnel (BQ 4.3)",
         "⚡ Features (BQ 5.x)"
     ]
 )
@@ -115,6 +116,12 @@ if page == "🏠 Inicio":
     #### 💰 **BQ 4.x - Revenue & Órdenes**
     - Órdenes por estado
     - GMV (Gross Merchandise Value) por día
+    
+    #### 🔄 **BQ 4.3 - Conversion Funnel (NUEVO)**
+    - Análisis del funnel de conversión de órdenes
+    - Tasas de conversión entre estados
+    - Identificación de cuellos de botella
+    - Análisis temporal de conversiones
     
     #### ⚡ **BQ 5.x - Features**
     - Uso de quick view por categoría
@@ -252,6 +259,10 @@ elif page == "🔥 Engagement (BQ 3.x)":
 elif page == "💰 Revenue & Órdenes (BQ 4.x)":
     from pages.revenue import render_revenue_page
     render_revenue_page()
+
+elif page == "🔄 Conversion Funnel (BQ 4.3)":
+    from pages.conversion_funnel import render_conversion_funnel_page
+    render_conversion_funnel_page()
 
 elif page == "⚡ Features (BQ 5.x)":
     from pages.features import render_features_page

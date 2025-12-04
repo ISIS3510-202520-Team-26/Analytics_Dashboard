@@ -256,6 +256,34 @@ class AnalyticsAPI:
         }
         return self._make_request('/analytics/bq/4_2', params)
     
+    def get_conversion_funnel(
+        self, 
+        start: datetime, 
+        end: datetime
+    ) -> List[Dict]:
+        """
+        BQ 4.3: Análisis del funnel de conversión de órdenes.
+        Utiliza los datos de BQ 4.1 para calcular el funnel.
+        
+        Returns:
+            Lista de dicts con keys: status, count
+        """
+        # Obtener datos de órdenes por estado
+        orders_data = self.get_orders_by_status_by_day(start, end)
+        
+        # Agregar por estado
+        funnel_data = {}
+        for order in orders_data:
+            status = order['status']
+            count = order['count']
+            if status not in funnel_data:
+                funnel_data[status] = 0
+            funnel_data[status] += count
+        
+        # Convertir a lista
+        result = [{'status': status, 'count': count} for status, count in funnel_data.items()]
+        return result
+    
     # ========================================================================
     # BQ 5.x - Feature Usage Analytics
     # ========================================================================
